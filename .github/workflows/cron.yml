@@ -1,0 +1,17 @@
+name: Domotica Cron 5-min
+
+on:
+  schedule:
+    # Se ejecuta cada 5 minutos, todos los días
+    - cron: '*/5 * * * *'
+
+  # Esto te permite ejecutarlo manualmente desde la pestaña "Actions"
+  workflow_dispatch:
+
+jobs:
+  cron:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Llamar a la API de ejecución de Vercel
+        run: |
+          curl --request GET 'https://domotica-backend-3q5i.vercel.app/api/execute'
