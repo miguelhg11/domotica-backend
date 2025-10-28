@@ -3,7 +3,7 @@ name: Domotica Cron 5-min
 on:
   schedule:
     # Se ejecuta cada 5 minutos, todos los días
-    - cron: '*/5 * * * *'
+    - cron: '* * * * *'
 
   # Esto te permite ejecutarlo manualmente desde la pestaña "Actions"
   workflow_dispatch:
