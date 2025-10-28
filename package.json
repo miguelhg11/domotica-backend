@@ -1,0 +1,9 @@
+{
+  "name": "domotica-backend",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@vercel/kv": "^1.0.1"
+  }
+}
