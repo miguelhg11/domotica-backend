@@ -7,7 +7,7 @@ import { kv } from '@vercel/kv';
 // ⚠️ CAMBIA ESTO por tu dirección de DuckDNS (sin http://)
 const DUCKDNS_HOST = "pabloalex123.duckdns.org"; 
 
-// ⚠️ Lista de SHUTTERS (extraída de tu HTML)
+// ⚠️ Pega tu lista completa de SHUTTERS aquí
 const SHUTTERS=[
   {id:'sot_cald',name:'Cuarto caldera',floor:'Sótano',facade:'Principal',board:1,r1:1,r2:2},
   {id:'pb_desp',name:'Despacho',floor:'Baja',facade:'Principal',board:1,r1:3,r2:4},
@@ -24,7 +24,7 @@ const SHUTTERS=[
   {id:'buh_es',name:'Escalera buhardilla',floor:'Buhardilla',facade:'Principal',board:2,r1:15,r2:16},
 ];
 
-// ⚠️ Lista de LIGHTS (extraída de tu HTML)
+// ⚠️ Pega tu lista completa de LIGHTS aquí
 const LIGHTS=[
   {id:'l_desp',name:'Luz Despacho',board:2,relay:7},
   {id:'l_es_p1',name:'Luz Escalera Planta 1',board:2,relay:8},
@@ -77,12 +77,10 @@ async function sendRelay(board,relay,value){
   const url=urlFor({board,relay,value});
   console.log(`HTTP GET ${url}`);
   try { 
-    // Usamos fetch con un timeout de 5s por si el relé no responde
     await fetch(url, { signal: AbortSignal.timeout(5000) }); 
   } catch(e) { 
     console.error(`Error al lanzar URL: ${e.message}`); 
   }
-  // Esperamos el delay *después* de lanzar la petición
   await new Promise(r=>setTimeout(r,SEND_DELAY_MS));
 }
 async function shutterAction(sh,dir){
@@ -111,10 +109,30 @@ export default async function handler(request, response) {
   // Obtenemos la hora actual en la zona horaria correcta (Europa/Madrid)
   const d = new Date(new Date().toLocaleString("en-US", {timeZone: "Europe/Madrid"}));
   const dow = getDOW(d);
-  const curM = nowMins(d);
+  const curM = nowMins(d); // Minuto actual del día (ej. 10:30 -> 630)
   const sun = sunTimes(d, FUEN.lat, FUEN.lon);
   
-  console.log(`CRON JOB: ${d.toISOString()} | Minuto: ${curM} | DOW: ${dow} | Sunrise: ${sun.sunrise} | Sunset: ${sun.sunset}`);
+  // =================================================================
+  //           NUEVA LÓGICA: Comprobar Tareas Pendientes
+  // =================================================================
+  
+  // 1. Cargar el minuto de la última ejecución
+  // Si falla, usamos el minuto anterior (curM - 1) para solo ejecutar este minuto
+  let lastRunMins = 0;
+  try {
+    // kv.get() devuelve 0 si no existe. 
+    // Usamos (curM - 2) como default para coger el minuto anterior y el actual
+    lastRunMins = (await kv.get('domo_lastRunMinute')) || (curM - 2);
+  } catch(e) {
+    lastRunMins = curM - 2;
+  }
+  
+  // Evitar que lastRunMins sea igual a curM, lo que causaría que no se ejecute nada
+  if (lastRunMins >= curM) {
+    lastRunMins = curM - 2;
+  }
+  
+  console.log(`CRON JOB: ${d.toISOString()} | Minuto Actual: ${curM} | DOW: ${dow} | Última Ejec: ${lastRunMins}`);
 
   let schedulesLights = [];
   let schedulesShutters = [];
@@ -143,10 +161,14 @@ export default async function handler(request, response) {
       triggerMinute = base + offset;
     }
 
-    if (triggerMinute !== curM) continue;
+    // Lógica MEJORADA: Ejecutar si la hora de la tarea está
+    // (DESPUÉS de la última ejecución) Y (ANTES O IGUAL que la hora actual)
+    if (triggerMinute <= lastRunMins || triggerMinute > curM) {
+      continue;
+    }
     
     // ¡Coincidencia! Ejecutar acción
-    console.log(`SCHED RUN [lights] ${s.name}`);
+    console.log(`SCHED RUN [lights] ${s.name} (Tarea de Minuto ${triggerMinute})`);
     let targets = [];
     if (s.target.type === 'ALL') targets = LIGHTS;
     if (s.target.type === 'INDIVIDUAL') targets = s.target.ids.map(getL);
@@ -170,10 +192,13 @@ export default async function handler(request, response) {
       triggerMinute = base + offset;
     }
 
-    if (triggerMinute !== curM) continue;
+    // Lógica MEJORADA
+    if (triggerMinute <= lastRunMins || triggerMinute > curM) {
+      continue;
+    }
     
     // ¡Coincidencia! Ejecutar acción
-    console.log(`SCHED RUN [shutters] ${s.name} -> action=${s.action.dir}`);
+    console.log(`SCHED RUN [shutters] ${s.name} -> action=${s.action.dir} (Tarea de Minuto ${triggerMinute})`);
     
     let dest = [];
     if(s.target.type==='ALL') dest=SHUTTERS;
@@ -213,6 +238,13 @@ export default async function handler(request, response) {
         await shutterAction(sh, s.action.dir);
       }
     }
+  }
+  
+  // 3. Guardar este minuto como la "última ejecución"
+  try {
+    await kv.set('domo_lastRunMinute', curM);
+  } catch (e) {
+    console.error("Error guardando lastRunMinute en KV", e);
   }
   
   response.status(200).send('OK');
