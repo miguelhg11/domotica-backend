@@ -1,8 +1,8 @@
-name: Domotica Cron 5-min
+name: Domotica Cron 1-min
 
 on:
   schedule:
-    # Se ejecuta cada 5 minutos, todos los días
+    # Se ejecuta CADA MINUTO, todos los días
     - cron: '* * * * *'
 
   # Esto te permite ejecutarlo manualmente desde la pestaña "Actions"
