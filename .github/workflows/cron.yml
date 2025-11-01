@@ -1,4 +1,4 @@
-name: Domotica Cron 1-min
+name: Domotica Cron CADA MINUTO
 
 on:
   schedule:
